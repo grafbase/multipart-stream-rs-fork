@@ -72,7 +72,7 @@ where
     #[pin]
     input: S,
 
-    /// The boundary with `--` prefix and `\r\n` suffix.
+    /// The boundary with `--` prefix but without the `\r\n` suffix.
     boundary: Vec<u8>,
     buf: BytesMut,
     state: State,
@@ -80,6 +80,7 @@ where
     max_body_bytes: usize,
 }
 
+#[derive(Debug)]
 enum State {
     /// Consuming 0 or more `\r\n` pairs, advancing when encountering a byte that doesn't fit that pattern.
     Newlines,
@@ -87,6 +88,17 @@ enum State {
     /// Waiting for the completion of a boundary.
     /// `pos` is the current offset within `boundary_buf`.
     Boundary { pos: usize },
+
+    /// After we've read boundary_buf, figuring out if this is a normal or terminating boundary
+    PostBoundary,
+
+    /// Reading the \r\ns after a normal boundary
+    /// `pos` is the current offset from the end of `boundary_buf`
+    PostBoundaryNewLines { pos: usize },
+
+    /// Reading the end of a closing boundary
+    /// `pos` is the current offset from the end of `boundary_buf`
+    ClosingBoundary { pos: usize },
 
     /// Waiting for a full set of headers.
     Headers,
@@ -137,7 +149,43 @@ impl State {
                     if *pos < boundary.len() {
                         return Ok(Poll::Pending);
                     }
+                    *self = State::PostBoundary;
+                }
+                State::PostBoundary => match buf.first() {
+                    Some(b'\r') => {
+                        *self = State::PostBoundaryNewLines { pos: 0 };
+                    }
+                    Some(b'-') => {
+                        *self = State::ClosingBoundary { pos: 0 };
+                    }
+                    Some(_) => return Err(parse_err!("bad boundary")),
+                    None => return Ok(Poll::Pending),
+                },
+                State::PostBoundaryNewLines { pos } => {
+                    let crlf = [b'\r', b'\n'];
+                    let len = std::cmp::min(crlf.len() - *pos, buf.len());
+                    if buf[0..len] != crlf[*pos..*pos + len] {
+                        return Err(parse_err!("bad boundary"));
+                    }
+                    buf.advance(len);
+                    *pos += len;
+                    if *pos < crlf.len() {
+                        return Ok(Poll::Pending);
+                    }
                     *self = State::Headers;
+                }
+                State::ClosingBoundary { pos } => {
+                    let closing_boundary = [b'-', b'-', b'\r', b'\n'];
+                    let len = std::cmp::min(closing_boundary.len() - *pos, buf.len());
+                    if buf[0..len] != closing_boundary[*pos..*pos + len] {
+                        return Err(parse_err!("bad boundary"));
+                    }
+                    buf.advance(len);
+                    *pos += len;
+                    if *pos < closing_boundary.len() {
+                        return Ok(Poll::Pending);
+                    }
+                    *self = State::Done;
                 }
                 State::Headers => {
                     let mut raw = [httparse::EMPTY_HEADER; 16];
@@ -247,7 +295,7 @@ impl ParserBuilder {
                 line.extend_from_slice(b"--");
             }
             line.extend_from_slice(boundary.as_bytes());
-            line.extend_from_slice(b"\r\n");
+            // line.extend_from_slice(b"\r\n");
             line
         };
 
@@ -303,6 +351,7 @@ where
                 Poll::Pending => return Poll::Pending,
                 Poll::Ready(None) => {
                     if !matches!(*this.state, State::Newlines) {
+                        dbg!(&this.state);
                         *this.state = State::Done;
                         return Poll::Ready(Some(Err(parse_err!("unexpected mid-part EOF"))));
                     }
@@ -498,6 +547,55 @@ mod tests {
                 i += 1;
             }
             assert_eq!(i, 1);
+        };
+        tester("myboundary", input.as_bytes(), verify_parts).await;
+        tester("--myboundary", input.as_bytes(), verify_parts).await;
+    }
+
+    #[tokio::test]
+    async fn closing_boundary() {
+        // A copy of the dahua test with a closing boundary added on the end
+        let input = concat!(
+            "--myboundary\r\n",
+            "Content-Type: text/plain\r\n",
+            "Content-Length:135\r\n",
+            "\r\n",
+            "Code=TimeChange;action=Pulse;index=0;data={\n",
+            "   \"BeforeModifyTime\" : \"2019-02-20 13:49:58\",\n",
+            "   \"ModifiedTime\" : \"2019-02-20 13:49:58\"\n",
+            "}\n",
+            "\r\n",
+            "\r\n",
+            "--myboundary\r\n",
+            "Content-Type: text/plain\r\n",
+            "Content-Length:137\r\n",
+            "\r\n",
+            "Code=NTPAdjustTime;action=Pulse;index=0;data={\n",
+            "   \"Address\" : \"192.168.5.254\",\n",
+            "   \"Before\" : \"2019-02-20 13:49:57\",\n",
+            "   \"result\" : true\n",
+            "}\n\r\n--myboundary--\r\n"
+        );
+        let verify_parts = |parts: Vec<Result<Part, Error>>| {
+            let mut i = 0;
+            for p in parts {
+                let p = p.unwrap();
+                assert_eq!(
+                    p.headers
+                        .get(http::header::CONTENT_TYPE)
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    "text/plain"
+                );
+                match i {
+                    0 => assert!(p.body.starts_with(b"Code=TimeChange")),
+                    1 => assert!(p.body.starts_with(b"Code=NTPAdjustTime")),
+                    _ => unreachable!(),
+                }
+                i += 1;
+            }
+            assert_eq!(i, 2);
         };
         tester("myboundary", input.as_bytes(), verify_parts).await;
         tester("--myboundary", input.as_bytes(), verify_parts).await;

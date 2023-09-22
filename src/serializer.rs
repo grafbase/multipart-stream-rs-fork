@@ -20,7 +20,8 @@ pub fn serialize<S, E>(parts: S, boundary: &str) -> impl Stream<Item = Result<By
 where
     S: Stream<Item = Result<Part, E>>,
 {
-    let mut b = BytesMut::with_capacity(boundary.len() + 4);
+    let mut b = BytesMut::with_capacity(boundary.len() + 6);
+    b.put(&b"\r\n"[..]);
     b.put(&b"--"[..]);
     b.put(boundary.as_bytes());
     b.put(&b"\r\n"[..]);
@@ -28,7 +29,7 @@ where
     Serializer {
         parts,
         boundary: b.freeze(),
-        state: State::Waiting,
+        state: State::Starting,
     }
 }
 
@@ -46,8 +47,20 @@ fn serialize_headers(headers: HeaderMap) -> Bytes {
     b.freeze()
 }
 
+fn serialize_closing_boundary(boundary: &Bytes) -> Bytes {
+    let mut b = BytesMut::with_capacity(boundary.len() + 6);
+    b.put(&boundary[..boundary.len() - 2]);
+    b.put(&b"--"[..]);
+    b.put(&b"\r\n"[..]);
+
+    b.freeze()
+}
+
 /// State of the [`Serializer`].
 enum State {
+    /// Waiting for the first [Part] from the inner stream.
+    Starting,
+
     /// Waiting for a fresh [Part] from the inner stream.
     Waiting,
 
@@ -56,6 +69,9 @@ enum State {
 
     /// Waiting for a chance to send the body of a previous [Part].
     SendBody(Bytes),
+
+    /// Finished serializing.
+    Done,
 }
 
 #[pin_project]
@@ -78,19 +94,34 @@ where
     fn poll_next(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
         match std::mem::replace(this.state, State::Waiting) {
-            State::Waiting => match this.parts.as_mut().poll_next(ctx) {
-                Poll::Pending => return Poll::Pending,
-                Poll::Ready(None) => return Poll::Ready(None),
-                Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(e))),
-                Poll::Ready(Some(Ok(mut p))) => {
-                    p.headers.insert(
-                        http::header::CONTENT_LENGTH,
-                        http::HeaderValue::from(p.body.len()),
-                    );
-                    *this.state = State::SendHeaders(p);
-                    return Poll::Ready(Some(Ok(this.boundary.clone())));
+            state @ (State::Waiting | State::Starting) => {
+                match this.parts.as_mut().poll_next(ctx) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(None) => {
+                        *this.state = State::Done;
+
+                        return Poll::Ready(Some(Ok(serialize_closing_boundary(&this.boundary))));
+                    }
+                    Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(e))),
+                    Poll::Ready(Some(Ok(mut p))) => {
+                        p.headers.insert(
+                            http::header::CONTENT_LENGTH,
+                            http::HeaderValue::from(p.body.len()),
+                        );
+                        *this.state = State::SendHeaders(p);
+
+                        let boundary = match state {
+                            State::Starting => this.boundary.slice(2..),
+                            State::Waiting => this.boundary.clone(),
+                            _ => {
+                                unreachable!()
+                            }
+                        };
+
+                        return Poll::Ready(Some(Ok(boundary)));
+                    }
                 }
-            },
+            }
             State::SendHeaders(part) => {
                 *this.state = State::SendBody(part.body);
                 let headers = serialize_headers(part.headers);
@@ -98,6 +129,9 @@ where
             }
             State::SendBody(body) => {
                 return Poll::Ready(Some(Ok(body)));
+            }
+            State::Done => {
+                return Poll::Ready(None);
             }
         }
     }
@@ -139,7 +173,8 @@ mod tests {
         assert_eq!(
             collected,
             "--b\r\ncontent-length: 3\r\n\r\nfoo\
-             --b\r\ncontent-length: 3\r\n\r\nbar"
+             \r\n--b\r\ncontent-length: 3\r\n\r\nbar\
+             \r\n--b--\r\n"
         );
     }
 
