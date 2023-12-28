@@ -135,7 +135,18 @@ checksum = "527e8c9ac747e28542699a951517aa9a6945af506cd1f2e1b53a576c17b6cc11"
 dependencies = [
  "bytes",
  "fnv",
- "itoa",
+ "itoa 0.4.7",
+]
+
+[[package]]
+name = "http"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b32afd38673a8016f7c9ae69e5af41a58f81b1d31689040f2f1959594ce194ea"
+dependencies = [
+ "bytes",
+ "fnv",
+ "itoa 1.0.10",
 ]
 
 [[package]]
@@ -145,7 +156,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5dfb77c123b4e2f72a2069aeae0b4b4949cc7e966df277813fc16347e7549737"
 dependencies = [
  "bytes",
- "http",
+ "http 0.2.4",
  "pin-project-lite",
 ]
 
@@ -171,11 +182,11 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
- "http",
+ "http 0.2.4",
  "http-body",
  "httparse",
  "httpdate",
- "itoa",
+ "itoa 0.4.7",
  "pin-project",
  "socket2",
  "tokio",
@@ -189,6 +200,12 @@ name = "itoa"
 version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd25036021b0de88a0aff6b850051563c6516d0bf53f8638938edbb9de732736"
+
+[[package]]
+name = "itoa"
+version = "1.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1a46d1a171d865aa5f83f92695765caa047a9b4cbae2cbf37dbd613a793fd4c"
 
 [[package]]
 name = "lazy_static"
@@ -251,7 +268,7 @@ version = "0.1.2"
 dependencies = [
  "bytes",
  "futures",
- "http",
+ "http 1.0.0",
  "httparse",
  "hyper",
  "mime",
@@ -461,99 +478,3 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-
-[[patch.unused]]
-name = "async-runtime"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "common-types"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "dataloader"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "dynamodb"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "dynamodb-utils"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "engine"
-version = "3.0.31"
-
-[[patch.unused]]
-name = "engine-value"
-version = "3.0.31"
-
-[[patch.unused]]
-name = "gateway-adapter"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "gateway-adapter-local"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "gatewaylib"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "graph-entities"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "graphql-extensions"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "jwt-verifier"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "log"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "parser-graphql"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "parser-openapi"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "parser-postgresql"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "parser-sdl"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "postgresql-types"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "runtime"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "runtime-ext"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "runtime-local"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "search-protocol"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "worker-env"
-version = "0.1.0"

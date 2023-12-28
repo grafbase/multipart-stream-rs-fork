@@ -15,7 +15,7 @@ repository = "https://github.com/scottlamb/multipart-stream-rs"
 [dependencies]
 bytes = "1.0.1"
 futures = "0.3.14"
-http = "0.2.4"
+http = "1"
 httparse = "1.4.0"
 pin-project = "1.0.7"
 
